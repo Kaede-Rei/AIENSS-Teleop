@@ -1,0 +1,29 @@
+# 机器人配置（从臂）
+robot:
+  port: /dev/com-1.3-tty
+  disable_torque_on_disconnect: true
+  joint_velocity_scaling: 1.0
+  max_gripper_torque: 1.0
+
+  # 为兼容原 Dual-DM-Arm-LeRobot 配置，允许保留 cameras；独立遥操作不会读取它们
+  cameras:
+    end:
+      type: opencv
+      index_or_path: /dev/com-1.2-video
+      width: 640
+      height: 480
+      fps: 30
+    eye:
+      type: opencv
+      index_or_path: 4
+      width: 1280
+      height: 720
+      fps: 30
+
+# 遥操作配置（主臂）
+teleop:
+  port: /dev/com-1.4-tty
+  gripper_open_pos: 2280
+  gripper_closed_pos: 1670
+  direction: [1, 1, 1, 1, 1, 1]
+  offset: [0.0, 0.0, 1.64, 0.0, 0.0, 0.0]

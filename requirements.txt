@@ -1,0 +1,4 @@
+numpy>=2.0.1
+pyserial>=3.5
+PyYAML>=6.0
+dynamixel-sdk>=3.7.31

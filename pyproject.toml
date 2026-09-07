@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dm-arm-standalone-teleop"
+version = "0.1.0"
+description = "Standalone Dynamixel leader to DaMiao follower single-arm teleoperation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Kaede-Rei"}]
+dependencies = [
+    "numpy>=2.0.1",
+    "pyserial>=3.5",
+    "PyYAML>=6.0",
+    "dynamixel-sdk>=3.7.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dm_arm_teleop*"]
+
+[tool.setuptools.package-data]
+"dm_arm_teleop.dm_control" = ["LICENSE"]
