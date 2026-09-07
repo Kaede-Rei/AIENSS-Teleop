@@ -1,4 +1,4 @@
-# 机器人配置（从臂）
+# 机器人配置（从臂/大臂）
 robot:
   port: /dev/com-1.3-tty
   disable_torque_on_disconnect: true
@@ -20,7 +20,7 @@ robot:
       height: 720
       fps: 30
 
-# 遥操作配置（主臂）
+# 遥操作配置（主臂/小臂）
 teleop:
   port: /dev/com-1.4-tty
   gripper_open_pos: 2280
