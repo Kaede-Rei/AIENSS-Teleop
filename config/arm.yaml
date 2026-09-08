@@ -1,7 +1,7 @@
 # 机器人配置（从臂/大臂）
 robot:
   port: /dev/com-1.3-tty
-  disable_torque_on_disconnect: true
+  disable_torque_on_disconnect: false
   joint_velocity_scaling: 1.0
   max_gripper_torque: 1.0
 

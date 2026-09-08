@@ -16,13 +16,17 @@ class DM_Motor:
         self.MasterID = MasterID
         self.MotorType = MotorType
         self.isEnable = False
+        self.status_code = None
         self.NowControlMode = Control_Type.MIT
         self.temp_param_dict = {}
 
-    def recv_data(self, q: float, dq: float, tau: float):
+    def recv_data(self, q: float, dq: float, tau: float, status_code=None):
         self.state_q = q
         self.state_dq = dq
         self.state_tau = tau
+        if status_code is not None:
+            self.status_code = int(status_code) & 0x0F
+            self.isEnable = self.status_code == 0x1
 
     def getPosition(self):
         return self.state_q
@@ -180,7 +184,8 @@ class MotorControl:
                     recv_q = uint_to_float(q_uint, -Q_MAX, Q_MAX, 16)
                     recv_dq = uint_to_float(dq_uint, -DQ_MAX, DQ_MAX, 12)
                     recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
-                    self.motors_map[CANID].recv_data(recv_q, recv_dq, recv_tau)
+                    status_code = (int(data[0]) >> 4) & 0x0F
+                    self.motors_map[CANID].recv_data(recv_q, recv_dq, recv_tau, status_code)
             else:
                 MasterID = data[0] & 0x0f
                 if MasterID in self.motors_map:
@@ -194,7 +199,8 @@ class MotorControl:
                     recv_q = uint_to_float(q_uint, -Q_MAX, Q_MAX, 16)
                     recv_dq = uint_to_float(dq_uint, -DQ_MAX, DQ_MAX, 12)
                     recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
-                    self.motors_map[MasterID].recv_data(recv_q, recv_dq, recv_tau)
+                    status_code = (int(data[0]) >> 4) & 0x0F
+                    self.motors_map[MasterID].recv_data(recv_q, recv_dq, recv_tau, status_code)
 
     def __process_set_param_packet(self, data, CANID, CMD):
         if CMD == 0x11 and (data[2] == 0x33 or data[2] == 0x55):

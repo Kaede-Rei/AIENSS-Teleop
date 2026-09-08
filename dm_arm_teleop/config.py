@@ -10,7 +10,7 @@ import yaml
 @dataclass(frozen=True)
 class FollowerConfig:
     port: str
-    disable_torque_on_disconnect: bool = True
+    disable_torque_on_disconnect: bool = False
     joint_velocity_scaling: float = 0.2
     max_gripper_torque: float = 1.0
 
@@ -92,7 +92,7 @@ def load_arm_config(config_path: str | Path) -> ArmConfig:
 
     follower_cfg = FollowerConfig(
         port=robot.get("port"),
-        disable_torque_on_disconnect=robot.get("disable_torque_on_disconnect", True),
+        disable_torque_on_disconnect=robot.get("disable_torque_on_disconnect", False),
         joint_velocity_scaling=float(robot.get("joint_velocity_scaling", 0.2)),
         max_gripper_torque=float(robot.get("max_gripper_torque", 1.0)),
     )

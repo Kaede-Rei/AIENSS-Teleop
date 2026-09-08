@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
@@ -24,6 +25,7 @@ class DMFollower:
     EMIT_VELOCITY_SCALE = 100
     EMIT_CURRENT_SCALE = 1000
 
+    JOINT_NAMES = tuple(f"joint_{i}" for i in range(1, 7))
     JOINT_LIMITS = {
         "joint_4": (-100 / 180 * math.pi, 100 / 180 * math.pi),
         "joint_5": (-90 / 180 * math.pi, 90 / 180 * math.pi),
@@ -53,7 +55,7 @@ class DMFollower:
     def is_connected(self) -> bool:
         return self.bus_connected
 
-    def connect(self) -> None:
+    def _open_bus(self) -> None:
         if self.is_connected:
             raise RuntimeError("Follower already connected")
         try:
@@ -65,8 +67,43 @@ class DMFollower:
         time.sleep(0.5)
         self.control = MotorControl(self.serial_device)
         self.bus_connected = True
+
+    def connect(self) -> None:
+        """Connect and perform the original teleoperation configuration sequence."""
+        self._open_bus()
         try:
             self.configure()
+        except Exception:
+            self._close_serial()
+            self.bus_connected = False
+            raise
+
+    def connect_passive(self) -> None:
+        """Connect without enabling, disabling, homing, or changing motor modes."""
+        self._open_bus()
+        try:
+            if self.control is None:
+                raise RuntimeError("Follower control is not initialized")
+            for key, motor in self.motors.items():
+                self.control.addMotor(motor)
+                for _ in range(3):
+                    self.control.refresh_motor_status(motor)
+                    time.sleep(0.01)
+                mode = self.control.read_motor_param(motor, DM_variable.CTRL_MODE)
+                if mode is None:
+                    raise RuntimeError(f"Unable to read control mode from {key} ({motor.MotorType.name})")
+                try:
+                    motor.NowControlMode = Control_Type(int(mode))
+                except ValueError:
+                    raise RuntimeError(f"Unsupported control mode {mode!r} on {key}") from None
+                if getattr(motor, "status_code", None) is None:
+                    self.control.refresh_motor_status(motor)
+                if getattr(motor, "status_code", None) is None:
+                    raise RuntimeError(f"Unable to read status from {key} ({motor.MotorType.name})")
+                print(
+                    f"  {key} ({motor.MotorType.name}) status=0x{motor.status_code:X} "
+                    f"mode={motor.NowControlMode.name}"
+                )
         except Exception:
             self._close_serial()
             self.bus_connected = False
@@ -82,9 +119,10 @@ class DMFollower:
                 self.control.refresh_motor_status(motor)
                 time.sleep(0.01)
             if self.control.read_motor_param(motor, DM_variable.CTRL_MODE) is None:
-                raise RuntimeError(f"Unable to read from {key} ({motor.MotorType.name}).")
-            print(f"  {key} ({motor.MotorType.name}) is connected.")
+                raise RuntimeError(f"Unable to read from {key} ({motor.MotorType.name})")
+            print(f"  {key} ({motor.MotorType.name}) is connected")
             self.control.switchControlMode(motor, Control_Type.POS_VEL)
+            motor.NowControlMode = Control_Type.POS_VEL
             self.control.enable(motor)
 
         for joint in ("joint_1", "joint_2", "joint_3"):
@@ -101,11 +139,13 @@ class DMFollower:
             raise RuntimeError("Follower control is not initialized")
         motor = self.motors["gripper"]
         self.control.switchControlMode(motor, Control_Type.VEL)
+        motor.NowControlMode = Control_Type.VEL
         self.control.control_Vel(motor, 10.0)
         while True:
             self.control.refresh_motor_status(motor)
             if motor.getTorque() > 1.2:
                 self.control.control_Vel(motor, 0.0)
+                # Local gripper-only disable is intentionally preserved for zeroing
                 self.control.disable(motor)
                 self.control.set_zero_position(motor)
                 time.sleep(0.2)
@@ -113,6 +153,7 @@ class DMFollower:
                 break
             time.sleep(0.01)
         self.control.switchControlMode(motor, Control_Type.Torque_Pos)
+        motor.NowControlMode = Control_Type.Torque_Pos
 
     def read_state(self) -> dict[str, float]:
         if not self.is_connected or self.control is None:
@@ -132,62 +173,175 @@ class DMFollower:
                 state[f"{key}.pos"] = float(motor.getPosition())
         return state
 
+    def read_joint_positions(self) -> dict[str, float]:
+        if not self.is_connected or self.control is None:
+            raise RuntimeError("Follower is not connected")
+        state: dict[str, float] = {}
+        for key in self.JOINT_NAMES:
+            motor = self.motors[key]
+            self.control.refresh_motor_status(motor)
+            state[f"{key}.pos"] = float(motor.getPosition())
+        return state
+
+    def _joint_goals(self, action: dict[str, Any]) -> dict[str, float]:
+        goals = {
+            key.removesuffix(".pos"): float(val)
+            for key, val in action.items()
+            if key.endswith(".pos") and key.removesuffix(".pos") in self.JOINT_NAMES
+        }
+        missing = set(self.JOINT_NAMES) - set(goals)
+        if missing:
+            raise KeyError(f"Missing joint action fields: {sorted(missing)}")
+        return goals
+
+    def send_joint_positions(self, action: dict[str, Any]) -> dict[str, float]:
+        """Send J1..J6 only, leaving gripper state untouched."""
+        if not self.is_connected or self.control is None:
+            raise RuntimeError("Follower is not connected")
+        goal_pos = self._joint_goals(action)
+        for key in self.JOINT_NAMES:
+            motor = self.motors[key]
+            if key in self.JOINT_LIMITS:
+                goal_pos[key] = float(np.clip(goal_pos[key], *self.JOINT_LIMITS[key]))
+            # Preserve original implementation: all J1..J6 use DM4340_SPEED
+            self.control.control_Pos_Vel(
+                motor,
+                goal_pos[key],
+                self.config.joint_velocity_scaling * self.DM4340_SPEED,
+            )
+        return {f"{key}.pos": value for key, value in goal_pos.items()}
+
     def send_action(self, action: dict[str, Any]) -> dict[str, float]:
         if not self.is_connected or self.control is None:
             raise RuntimeError("Follower is not connected")
 
-        goal_pos = {
-            key.removesuffix(".pos"): float(val)
-            for key, val in action.items()
-            if key.endswith(".pos")
-        }
-        required = set(self.motors)
-        missing = required - set(goal_pos)
-        if missing:
-            raise KeyError(f"Missing action fields: {sorted(missing)}")
+        sent = self.send_joint_positions(action)
+        if "gripper.pos" not in action:
+            raise KeyError("Missing action fields: ['gripper']")
+        gripper_goal = float(action["gripper.pos"])
+        motor = self.motors["gripper"]
+        self.control.refresh_motor_status(motor)
+        mapped = map_range(
+            gripper_goal,
+            0.0,
+            1.0,
+            self.gripper_open_pos,
+            self.gripper_closed_pos,
+        )
+        self.control.control_pos_force(
+            motor,
+            mapped,
+            self.DM4310_SPEED * self.EMIT_VELOCITY_SCALE,
+            i_des=(
+                self.config.max_gripper_torque
+                / self.DM4310_TORQUE_CONSTANT
+                * self.EMIT_CURRENT_SCALE
+            ),
+        )
+        sent["gripper.pos"] = gripper_goal
+        return sent
 
-        for key, motor in self.motors.items():
-            if key == "gripper":
+    def motor_statuses(
+        self,
+        *,
+        motor_names: Iterable[str] | None = None,
+        refresh: bool = True,
+    ) -> dict[str, int | None]:
+        if not self.is_connected or self.control is None:
+            raise RuntimeError("Follower is not connected")
+        names = tuple(self.motors) if motor_names is None else tuple(motor_names)
+        statuses: dict[str, int | None] = {}
+        for key in names:
+            motor = self.motors[key]
+            if refresh:
                 self.control.refresh_motor_status(motor)
-                mapped = map_range(
-                    goal_pos[key],
-                    0.0,
-                    1.0,
-                    self.gripper_open_pos,
-                    self.gripper_closed_pos,
-                )
-                self.control.control_pos_force(
-                    motor,
-                    mapped,
-                    self.DM4310_SPEED * self.EMIT_VELOCITY_SCALE,
-                    i_des=(
-                        self.config.max_gripper_torque
-                        / self.DM4310_TORQUE_CONSTANT
-                        * self.EMIT_CURRENT_SCALE
-                    ),
-                )
-            else:
-                if key in self.JOINT_LIMITS:
-                    goal_pos[key] = float(np.clip(goal_pos[key], *self.JOINT_LIMITS[key]))
-                # Intentionally preserve the original implementation: J1..J6
-                # all use DM4340_SPEED, even J4..J6 which are DM4310 motors.
-                self.control.control_Pos_Vel(
-                    motor,
-                    goal_pos[key],
-                    self.config.joint_velocity_scaling * self.DM4340_SPEED,
-                )
+            statuses[key] = getattr(motor, "status_code", None)
+        return statuses
 
-        return {f"{motor}.pos": val for motor, val in goal_pos.items()}
+    @staticmethod
+    def _format_statuses(statuses: dict[str, int | None]) -> str:
+        return ", ".join(
+            f"{key}=0x{status:X}" if status is not None else f"{key}=unknown"
+            for key, status in statuses.items()
+        )
+
+    def enable_disabled_motors(
+        self,
+        *,
+        motor_names: Iterable[str] | None = None,
+        refresh: bool = True,
+    ) -> list[str]:
+        if not self.is_connected or self.control is None:
+            raise RuntimeError("Follower is not connected")
+        names = tuple(self.motors) if motor_names is None else tuple(motor_names)
+        statuses = self.motor_statuses(motor_names=names, refresh=refresh)
+        faults = {key: status for key, status in statuses.items() if status not in (0, 1)}
+        if faults:
+            raise RuntimeError(
+                f"Follower motor status is not safe to enable: {self._format_statuses(faults)}"
+            )
+
+        enabled: list[str] = []
+        for key in names:
+            if statuses[key] == 0:
+                motor = self.motors[key]
+                self.control.enable(motor)
+                self.control.refresh_motor_status(motor)
+                if getattr(motor, "status_code", None) != 1:
+                    raise RuntimeError(
+                        f"Failed to enable {key}, status="
+                        f"{self._format_statuses({key: getattr(motor, 'status_code', None)})}"
+                    )
+                enabled.append(key)
+        return enabled
+
+    def prepare_reset_joints(self, *, refresh: bool = True) -> list[str]:
+        """Ensure J1..J6 are enabled in POS_VEL without touching the gripper."""
+        if not self.is_connected or self.control is None:
+            raise RuntimeError("Follower is not connected")
+        statuses = self.motor_statuses(motor_names=self.JOINT_NAMES, refresh=refresh)
+        faults = {key: status for key, status in statuses.items() if status not in (0, 1)}
+        if faults:
+            raise RuntimeError(
+                f"Follower joint fault blocks reset: {self._format_statuses(faults)}"
+            )
+
+        enabled: list[str] = []
+        for key in self.JOINT_NAMES:
+            motor = self.motors[key]
+            status = statuses[key]
+            if status == 1:
+                if motor.NowControlMode != Control_Type.POS_VEL:
+                    raise RuntimeError(
+                        f"{key} is enabled in {motor.NowControlMode.name}, expected POS_VEL; "
+                        "refusing to change mode while loaded"
+                    )
+                continue
+
+            if motor.NowControlMode != Control_Type.POS_VEL:
+                if not self.control.switchControlMode(motor, Control_Type.POS_VEL):
+                    raise RuntimeError(f"Failed to switch {key} to POS_VEL before enable")
+                motor.NowControlMode = Control_Type.POS_VEL
+            self.control.enable(motor)
+            self.control.refresh_motor_status(motor)
+            if getattr(motor, "status_code", None) != 1:
+                raise RuntimeError(
+                    f"Failed to enable {key}: {self._format_statuses({key: getattr(motor, 'status_code', None)})}"
+                )
+            enabled.append(key)
+        return enabled
+
+    def disable_all(self) -> None:
+        """Explicit whole-arm disable, never called implicitly by disconnect."""
+        if not self.is_connected or self.control is None:
+            return
+        for motor in self.motors.values():
+            self.control.disable(motor)
 
     def disconnect(self) -> None:
+        """Close follower communication without changing motor enable state."""
         if not self.is_connected:
             return
-        if self.control is not None and self.config.disable_torque_on_disconnect:
-            for motor in self.motors.values():
-                try:
-                    self.control.disable(motor)
-                except Exception:
-                    pass
         self._close_serial()
         self.bus_connected = False
 

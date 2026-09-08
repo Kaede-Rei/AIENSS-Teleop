@@ -1,22 +1,16 @@
 # AIENSS-Teleop
 
-**AIENSS-Teleop** 是一个不依赖 LeRobot ROS 相机或 GUI 的单臂主从遥操作仓库
+**AIENSS-Teleop** 是一个独立的单臂主从遥操作仓库
 
 ```text
 Dynamixel XL330 Leader  →  Python standalone teleop  →  DaMiao DM Follower
 ```
 
-仓库目标是把原 `Dual-DM-Arm-LeRobot` 中已经验证过的单臂遥操作链路独立出来
-
-保留原有电机配置 关节映射 夹爪逻辑 限位和控制参数
-
-运行时只保留机械臂遥操作真正需要的 Python 依赖
-
----
+仓库不依赖 LeRobot ROS 相机或 GUI
 
 ## 1 硬件与平台
 
-### 1.1 Leader Dynamixel 示教臂
+### 1.1 Leader
 
 | 关节 | 电机 | ID |
 |---|---|---:|
@@ -32,10 +26,9 @@ Leader 通信参数
 
 - DYNAMIXEL Protocol 2.0
 - 115200 baud
-- 读取 `Present_Position`
-- 7 个电机同步读取
+- 同步读取 7 个电机的 `Present_Position`
 
-### 1.2 Follower 达妙 DM 六轴臂和夹爪
+### 1.2 Follower
 
 | 关节 | 电机 | Slave ID | Master ID |
 |---|---|---:|---:|
@@ -47,28 +40,20 @@ Leader 通信参数
 | J6 | DM4310 | `0x06` | `0x16` |
 | Gripper | DM4310 | `0x07` | `0x17` |
 
-Follower 通过串口连接达妙 USB-CAN 或对应串口控制器
+Follower 通过达妙 USB CAN 串口控制器连接
 
-当前代码固定使用 `115200` baud
+当前代码使用 115200 baud
 
-### 1.3 操作系统支持
+### 1.3 平台支持
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
-| **Linux / Ubuntu** | **已实机验证** | 使用 `install.sh` 和 `launch.sh` |
-| **Windows Native** | **已实机验证** | 使用 `install.bat` 和 `launch.bat` |
-| WSL | 不推荐 | USB 和串口透传会增加额外排障成本 |
-| macOS | 未验证 | 底层 DYNAMIXEL SDK 具备支持基础 但当前仓库没有实机测试 |
+| Linux Ubuntu | 已验证 推荐 | 使用 `install.sh` `launch.sh` `reset.sh` |
+| Windows Native | 已完成实机验证 | 使用 `install.bat` `launch.bat` `reset.bat` |
+| WSL | 不推荐 | USB 串口透传会增加排障成本 |
+| macOS | 未验收 | 底层 SDK 支持但不是当前部署目标 |
 
-Windows Native 已在当前硬件环境完成安装和运行测试
-
-本次成功测试环境包含 Python `3.14.3`
-
-Linux 和 Windows 使用同一套 Python 控制代码
-
-平台差异主要集中在串口设备名 虚拟环境路径 驱动安装和启动脚本
-
-### 1.4 软件要求
+软件要求
 
 - Python `>= 3.10`
 - `numpy`
@@ -76,205 +61,79 @@ Linux 和 Windows 使用同一套 Python 控制代码
 - `PyYAML`
 - `dynamixel-sdk`
 
-不需要安装以下框架
-
-- LeRobot
-- PyTorch
-- Hugging Face
-- ROS 或 ROS 2
-- OpenCV
-- Rerun
-- 相机驱动
-
----
-
 ## 2 Quick Start
 
 ### 2.1 Linux
 
-#### 安装
-
-在仓库根目录运行
+安装
 
 ```bash
 ./install.sh
 ```
 
-脚本会完成以下操作
-
-1. 检查 Python `>= 3.10`
-2. 创建 `.venv`
-3. 准备 Python 安装环境
-4. 安装本项目和运行时依赖
-
-如果脚本没有执行权限
+如果没有执行权限
 
 ```bash
-chmod +x install.sh launch.sh
+chmod +x install.sh launch.sh reset.sh
 ./install.sh
 ```
 
-如果系统存在多个 Python 可以显式指定
-
-```bash
-PYTHON_BIN=python3.11 ./install.sh
-```
-
-#### 配置串口
-
-修改
-
-```text
-config/arm.yaml
-```
-
-Linux 示例
-
-```yaml
-robot:
-  port: /dev/ttyUSB0
-
-teleop:
-  port: /dev/ttyUSB1
-```
-
-当前配置中的 `/dev/com-*` 属于特定机器上的稳定设备名
-
-换机器后请按照实际设备路径修改
-
-#### 首次只读检查
-
-Leader
+只读检查
 
 ```bash
 ./.venv/bin/python scripts/leader_test.py
-```
-
-Follower
-
-```bash
 ./.venv/bin/python scripts/follower_test.py
 ```
 
-两侧读取正常后再启动遥操作
-
-#### 启动
+启动遥操作
 
 ```bash
 ./launch.sh
 ```
 
-停止使用 `Ctrl-C`
+安全归零
 
----
+```bash
+./reset.sh
+```
 
 ### 2.2 Windows Native
 
-#### 安装
-
-在 PowerShell 或 CMD 中进入仓库根目录
-
-推荐运行
+安装
 
 ```powershell
 .\install.bat
 ```
 
-也可以直接双击 `install.bat`
-
-Windows 安装脚本会完成以下操作
-
-1. 优先使用 Windows Python Launcher `py -3`
-2. 找不到 Launcher 时尝试 `python`
-3. 检查 Python `>= 3.10`
-4. 创建 `.venv`
-5. 检查虚拟环境中的 pip
-6. 检测异常的 `~ip*` 残留
-7. 在 pip 损坏时自动重建 `.venv`
-8. 直接执行 `pip install -e .`
-
-Windows 安装脚本不会在刚创建的虚拟环境中升级 pip 自身
-
-这样可以避免 Windows 文件占用导致的 `WinError 32`
-
-本次 Windows 实测使用 Python `3.14.3` 安装成功
-
-#### 配置串口
-
-修改
-
-```text
-config/arm.yaml
-```
-
-Windows 示例
-
-```yaml
-robot:
-  port: COM3
-
-teleop:
-  port: COM4
-```
-
-`COM3` 和 `COM4` 只是示例
-
-实际端口请在 Windows 设备管理器中确认
-
-Leader 和 Follower 对应的 USB 转接器驱动需要提前正常安装
-
-#### 首次只读检查
-
-Leader
+只读检查
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\leader_test.py
-```
-
-Follower
-
-```powershell
 .\.venv\Scripts\python.exe scripts\follower_test.py
 ```
 
-两侧读取正常后再启动遥操作
-
-#### 启动
+启动遥操作
 
 ```powershell
 .\launch.bat
 ```
 
-停止使用 `Ctrl-C`
+安全归零
 
-Windows 当前已经完成实机运行测试
-
----
+```powershell
+.\reset.bat
+```
 
 ## 3 配置 `config/arm.yaml`
 
-默认配置
+默认核心配置
 
 ```yaml
 robot:
   port: /dev/com-1.3-tty
-  disable_torque_on_disconnect: true
+  disable_torque_on_disconnect: false
   joint_velocity_scaling: 1.0
   max_gripper_torque: 1.0
-
-  cameras:
-    end:
-      type: opencv
-      index_or_path: /dev/com-1.2-video
-      width: 640
-      height: 480
-      fps: 30
-    eye:
-      type: opencv
-      index_or_path: 4
-      width: 1280
-      height: 720
-      fps: 30
 
 teleop:
   port: /dev/com-1.4-tty
@@ -284,11 +143,7 @@ teleop:
   offset: [0.0, 0.0, 1.64, 0.0, 0.0, 0.0]
 ```
 
-### 3.1 `robot` DM Follower
-
-#### `robot.port`
-
-Follower 的串口设备
+### 3.1 `robot.port`
 
 Linux 示例
 
@@ -302,63 +157,7 @@ Windows 示例
 port: COM3
 ```
 
-#### `disable_torque_on_disconnect`
-
-```yaml
-disable_torque_on_disconnect: true
-```
-
-为 `true` 时 正常退出遥操作后会尝试失能全部 DM 电机
-
-建议保持 `true`
-
-#### `joint_velocity_scaling`
-
-```yaml
-joint_velocity_scaling: 1.0
-```
-
-允许范围
-
-```text
-0 < scaling <= 1.0
-```
-
-首次调试可以先降低到
-
-```yaml
-joint_velocity_scaling: 0.3
-```
-
-当前版本为保持原仓库行为 J1 到 J6 都使用同一个速度基准
-
-```text
-joint_velocity_scaling × DM4340_SPEED
-```
-
-即使 J4 到 J6 实际使用 DM4310 当前版本也暂时不按型号拆分速度上限
-
-#### `max_gripper_torque`
-
-```yaml
-max_gripper_torque: 1.0
-```
-
-该参数用于计算 Follower 夹爪 `Torque_Pos` 模式下的目标电流
-
-#### `cameras`
-
-该字段仅用于兼容原 `Dual-DM-Arm-LeRobot` 配置
-
-本仓库不会读取 初始化或显示任何相机
-
-可以保留该字段 也可以删除整个 `cameras` 配置块
-
-### 3.2 `teleop` Dynamixel Leader
-
-#### `teleop.port`
-
-Leader 的 DYNAMIXEL 串口设备
+### 3.2 `teleop.port`
 
 Linux 示例
 
@@ -372,414 +171,272 @@ Windows 示例
 port: COM4
 ```
 
-#### `gripper_open_pos` 和 `gripper_closed_pos`
+### 3.3 `disable_torque_on_disconnect`
 
-```yaml
-gripper_open_pos: 2280
-gripper_closed_pos: 1670
-```
+该字段为了兼容旧配置继续保留
 
-这两个值是 Leader 夹爪的 DYNAMIXEL encoder tick
+当前安全策略下 `DMFollower.disconnect()` 永远只关闭通信 不会自动失能
 
-当前映射
+即使用户把该字段改成 `true` 也不会恢复旧的自动失能行为
+
+整臂失能只能通过明确的用户确认触发
+
+### 3.4 `joint_velocity_scaling`
+
+允许范围
 
 ```text
-2280 → 0.0 → Follower open
-1670 → 1.0 → Follower closed
+0 < scaling <= 1.0
 ```
 
-如果更换 Leader 夹爪结构或零点 需要重新测量这两个值
+遥操作保持原实现 J1 到 J6 都使用 `joint_velocity_scaling × DM4340_SPEED`
 
-#### `direction`
+### 3.5 `max_gripper_torque`
 
-```yaml
-direction: [1, 1, 1, 1, 1, 1]
-```
+用于 Follower 夹爪 `Torque_Pos` 模式下的目标电流换算
 
-对应 J1 到 J6 的关节方向
+### 3.6 `direction`
+
+对应 J1 到 J6 的方向
 
 允许值只有 `1` 和 `-1`
 
-例如反转 J2
+### 3.7 `offset`
 
-```yaml
-direction: [1, -1, 1, 1, 1, 1]
-```
-
-#### `offset`
+默认配置
 
 ```yaml
 offset: [0.0, 0.0, 1.64, 0.0, 0.0, 0.0]
 ```
 
-对应 J1 到 J6 的弧度偏置
+当前 J3 保留 `+1.64 rad` 对齐偏置
 
-当前配置中 J3 使用 `+1.64 rad`
+## 4 Fault Hold 安全机制
 
-这是现有 Leader 和 Follower 对齐的一部分
-
-没有重新标定时不建议修改
-
----
-
-## 4 启动脚本与运行参数
-
-### 4.1 Linux
-
-```bash
-./launch.sh
-```
-
-### 4.2 Windows
-
-```powershell
-.\launch.bat
-```
-
-两个启动脚本都会把额外参数透传给 `scripts/teleop.py`
-
-### 临时覆盖串口
-
-Linux
-
-```bash
-./launch.sh \
-  --leader_port /dev/ttyUSB1 \
-  --follower_port /dev/ttyUSB0
-```
-
-Windows
-
-```powershell
-.\launch.bat --leader_port COM4 --follower_port COM3
-```
-
-### 临时降低速度
-
-Linux
-
-```bash
-./launch.sh --joint_velocity_scaling 0.3
-```
-
-Windows
-
-```powershell
-.\launch.bat --joint_velocity_scaling 0.3
-```
-
-### 修改目标循环频率
-
-默认值
+运行时状态逻辑为：
 
 ```text
-200 Hz
+NORMAL
+  Leader 读取成功
+  ↓
+  正常发送新 action
+
+LEADER FAULT HOLD
+  Leader 读取失败
+  ↓
+  不发送任何新 action
+  ↓
+  Follower 保持当前使能状态和最后目标
+  ↓
+  周期性重试 Leader 读取
+  ├─ 恢复成功 → 自动回到 NORMAL
+  └─ 持续失败 → 等待用户 Ctrl+C
 ```
 
-Linux 示例
+Leader 读取失败时不会重发新的旧 action
 
-```bash
-./launch.sh --freq 100
-```
+Follower 依靠电机内部位置控制继续保持最后一次目标
 
-Windows 示例
+Leader 恢复后遥操作自动继续
 
-```powershell
-.\launch.bat --freq 100
-```
+### 4.1 Ctrl+C
 
-查看完整参数
-
-Linux
-
-```bash
-./launch.sh --help
-```
-
-Windows
-
-```powershell
-.\launch.bat --help
-```
-
----
-
-## 5 首次硬件检查与安全
-
-### 5.1 Leader 只读检查
-
-Linux
-
-```bash
-./.venv/bin/python scripts/leader_test.py
-```
-
-Windows
-
-```powershell
-.\.venv\Scripts\python.exe scripts\leader_test.py
-```
-
-该脚本会读取 7 个 Dynamixel 的 `Present_Position`
-
-该脚本不会使能主臂关节扭矩
-
-该脚本不会发送目标位置
-
-### 5.2 Follower 只读检查
-
-Linux
-
-```bash
-./.venv/bin/python scripts/follower_test.py
-```
-
-Windows
-
-```powershell
-.\.venv\Scripts\python.exe scripts\follower_test.py
-```
-
-该脚本会探测 7 个 DM 电机并读取状态
-
-该脚本不会 enable 电机
-
-该脚本不会执行夹爪 homing
-
-### 5.3 正式遥操作启动行为
-
-正式启动后 Follower 会按照原仓库行为执行以下流程
-
-1. 检查 J1 到 J6 和 Gripper
-2. 切换到对应控制模式
-3. enable DM 电机
-4. 写入原控制参数
-5. 执行夹爪自动找零
-6. 进入 Leader 到 Follower 实时映射循环
-
-夹爪自动找零会主动运动夹爪
-
-检测条件
+按下 `Ctrl+C` 后会询问是否失能 Follower
 
 ```text
-torque > 1.2
+Disable follower motors before exit? This may allow the arm to drop [y/N]
 ```
 
-达到条件后会停止 失能 设置零位 重新使能并进入 `Torque_Pos`
+默认选择为 No
 
-首次启动前必须保证夹爪运动方向没有手指 线缆 工具或硬物阻挡
+直接回车不会失能
 
----
+输入 `n` 或 `no` 不会失能
 
-## 6 控制行为与数据流
+只有明确输入 `y` 或 `yes` 才会调用整臂失能
+
+### 4.2 普通异常
+
+任何普通异常退出都不会自动失能 Follower
+
+程序只关闭通信口并保留电机当前使能状态
+
+发生异常后可以使用 `reset.sh` 或 `reset.bat` 归零
+
+### 4.3 硬件 fault 的边界
+
+软件可以避免程序异常路径主动发送 disable 命令
+
+但如果 DM 驱动器自身进入过压 欠压 过流 过温 通信丢失或过载等硬件保护状态 电机固件本身仍可能停止输出
+
+这种硬件保护行为无法通过本仓库的软件策略禁止
+
+如果 DM 的 CAN TIMEOUT 已配置为非零 进程退出后停止通信仍可能触发驱动器通信丢失保护 因此需要按实际电机配置确认 TIMEOUT 行为
+
+## 5 Safe Reset
+
+reset 的目标是将 J1 到 J6 平滑移动到 `0 rad`
+
+reset 不是修改编码器零点 也不会调用 DM 的 set zero position 命令
+
+默认流程
 
 ```text
-XL330 Leader
-ID 1..7 / 115200 / Protocol 2.0
-        ↓
-Present_Position
-        ↓
-raw tick → rad
-        ↓
-direction + offset
-        ↓
-gripper normalize 0..1
-        ↓
-DM Follower
-J1..J6: POS_VEL
-Gripper: Torque_Pos
+连接 Follower 但不改变使能状态
+↓
+读取 J1 到 J6 实际 DM 状态码
+↓
+状态 1 已使能
+  直接使用
+↓
+状态 0 已失能
+  确认控制模式
+  必要时切换到 POS_VEL
+  enable 对应关节
+↓
+状态 8 到 E 硬件 fault
+  中止 reset
+  不发送 disable
+↓
+读取当前位置
+↓
+时间插值 + 单步限幅
+↓
+平滑移动 J1 到 J6 到 0 rad
+↓
+保持使能并关闭通信
 ```
 
-### 6.1 Leader 映射
+reset 不会操作夹爪
 
-J1 到 J6
+reset 不会执行夹爪 homing
+
+reset 完成后不会失能
+
+reset 被 Ctrl+C 中断后也不会失能
+
+### 5.1 默认 reset 参数
+
+```text
+control_freq = 200 Hz
+smooth_time = 2.0 s
+max_step = 0.05 rad
+tolerance = 0.02 rad
+timeout = 30 s
+joint_velocity_scaling = 0.2
+```
+
+Linux 参数示例
+
+```bash
+./reset.sh --smooth_time 4 --joint_velocity_scaling 0.1
+```
+
+Windows 参数示例
+
+```powershell
+.\reset.bat --smooth_time 4 --joint_velocity_scaling 0.1
+```
+
+完整参数
+
+```bash
+./reset.sh --help
+```
+
+```powershell
+.\reset.bat --help
+```
+
+## 6 控制行为
+
+Leader 映射
 
 ```text
 rad = raw / 4096 × 2π - π
 rad = rad × direction[i] + offset[i]
 ```
 
-默认 J3 偏置
+默认 J3
 
 ```text
 J3 += 1.64 rad
 ```
 
-Gripper
+Follower 限位
 
 ```text
-open tick   = 2280 → 0.0
-closed tick = 1670 → 1.0
+J4 = ±100°
+J5 = ±90°
 ```
 
-### 6.2 Follower 限位
+Follower J1 到 J6 保留原有 POS_VEL 控制行为
 
-```text
-J4: -100° ~ +100°
-J5:  -90° ~  +90°
-```
+Gripper 保留原有 Torque_Pos 控制和自动 homing 行为
 
-夹爪映射
+夹爪 homing 中局部的 `disable → set zero → enable` 仍然保留
 
-```text
-Leader 0..1
-     ↓
-Follower 0 .. -5.23 rad
-```
+这一行为只作用于夹爪 不会导致整条机械臂失去支撑
 
-### 6.3 Follower 原始控制参数
+## 7 常用命令
 
-J1 到 J3
-
-```text
-ACC    = 10
-DEC    = -10
-KP_APR = 200
-KI_APR = 10
-```
-
-Gripper
-
-```text
-KP_APR = 100
-```
-
----
-
-## 7 开发与测试
-
-Linux 安装开发依赖
+Linux
 
 ```bash
-./.venv/bin/python -m pip install -e '.[dev]'
+./launch.sh
+./launch.sh --freq 100
+./launch.sh --joint_velocity_scaling 0.3
+./reset.sh
 ```
 
-Windows 安装开发依赖
+Windows
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\launch.bat
+.\launch.bat --freq 100
+.\launch.bat --joint_velocity_scaling 0.3
+.\reset.bat
 ```
-
-Linux 运行测试
-
-```bash
-./.venv/bin/python -m pytest -q
-```
-
-Windows 运行测试
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-语法检查
-
-```bash
-./.venv/bin/python -m compileall -q dm_arm_teleop scripts
-bash -n install.sh
-bash -n launch.sh
-```
-
-软件测试覆盖以下内容
-
-- 配置加载与覆盖
-- Leader tick 到 rad
-- direction 和 offset
-- J3 `+1.64 rad`
-- Gripper 归一化
-- J4 和 J5 限位
-- 统一 DM4340 速度缩放兼容行为
-- Gripper 位置和电流换算
-- DYNAMIXEL Protocol 2.0 寄存器访问
-- Leader 配置顺序
-- 仓库无 LeRobot runtime import 和 dependency
-- Linux Bash 启动入口
-- Windows Batch 安装和启动入口
-
----
 
 ## 8 仓库结构
 
 ```text
 AIENSS-Teleop/
-├── install.sh
-├── launch.sh
-├── install.bat
-├── launch.bat
 ├── config/
 │   └── arm.yaml
 ├── dm_arm_teleop/
 │   ├── config.py
-│   ├── mapping.py
 │   ├── dynamixel_bus.py
-│   ├── leader.py
 │   ├── follower.py
+│   ├── leader.py
+│   ├── mapping.py
 │   └── dm_control/
-│       ├── DM_CAN.py
-│       └── LICENSE
 ├── scripts/
 │   ├── teleop.py
+│   ├── reset.py
 │   ├── leader_test.py
 │   └── follower_test.py
 ├── tests/
-├── pyproject.toml
-├── requirements.txt
-├── NOTICE.md
-└── LICENSE
+├── install.sh
+├── launch.sh
+├── reset.sh
+├── install.bat
+├── launch.bat
+├── reset.bat
+├── README.md
+└── pyproject.toml
 ```
-
----
 
 ## 9 仓库历史
 
-本仓库的单臂遥操作逻辑最初来自 `Kaede-Rei/Dual-DM-Arm-LeRobot`
+本仓库的单臂遥操作路径来自 `Kaede-Rei/Dual-DM-Arm-LeRobot`
 
-原实现面向 LeRobot 集成
+原项目依赖 LeRobot 完成 Leader 与 Follower 封装
 
-其中同时包含 DM Follower Dynamixel Leader LeRobot Robot LeRobot Teleoperator Camera config `lerobot-teleoperate` 和 Rerun GUI
+AIENSS-Teleop 将这条已经验证的硬件链路抽离为独立 Python 实现
 
-对于单纯的机械臂主从遥操作 这些上层框架会引入大量与实际运动控制无关的依赖
+## 10 许可证
 
-因此 AIENSS-Teleop 将已经使用过的单臂链路独立出来
+仓库主体遵循根目录 `LICENSE`
 
-原来的数据链路
-
-```text
-Leader → LeRobot Teleoperator → LeRobot teleop runtime → Robot → DM
-```
-
-现在的数据链路
-
-```text
-Leader → standalone Python → DM
-```
-
-独立过程中刻意保持以下行为不变
-
-- Leader 7 个 XL330 ID 与型号
-- Protocol 2.0 和 115200 baud
-- J3 `+1.64 rad`
-- `direction` 和 `offset`
-- Gripper 2280 和 1670
-- DM 电机 ID 与类型
-- J4 和 J5 限位
-- Gripper 自动找零
-- Gripper Torque Position
-- J1 到 J6 共用原 `DM4340_SPEED` 的兼容行为
-
-仓库目标是去掉框架依赖 而不是改变机械臂控制表现
-
-后续如果需要接入 LeRobot Isaac Sim ROS 2 或 SerialArm-Core 建议继续把本仓库视为底层硬件遥操作 baseline
-
----
-
-## 10 来源与许可证
-
-DM 底层协议实现来源和许可证见以下文件
-
-```text
-NOTICE.md
-dm_arm_teleop/dm_control/LICENSE
-```
-
-本仓库其余新增代码使用根目录 `MIT License`
+`dm_arm_teleop/dm_control/DM_CAN.py` 来源及许可证信息见对应目录中的 `LICENSE`
