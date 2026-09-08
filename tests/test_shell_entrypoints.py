@@ -4,7 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,3 +37,35 @@ def test_install_creates_venv_and_installs_project_editable():
     assert "-m venv" in text
     assert "pip install" in text
     assert "-e ." in text
+
+
+def test_windows_entrypoints_exist_and_target_local_virtualenv():
+    install = ROOT / "install.bat"
+    launch = ROOT / "launch.bat"
+    assert install.is_file(), "missing install.bat"
+    assert launch.is_file(), "missing launch.bat"
+
+    install_text = install.read_text(encoding="utf-8")
+    assert "-m venv" in install_text
+    assert ".venv\\Scripts\\python.exe" in install_text
+    assert "pip install" in install_text
+    assert "-e ." in install_text
+
+    launch_text = launch.read_text(encoding="utf-8")
+    assert ".venv\\Scripts\\python.exe" in launch_text
+    assert "scripts\\teleop.py" in launch_text
+    assert "%*" in launch_text
+
+
+def test_readme_documents_windows_one_click_quick_start():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "install.bat" in text
+    assert "launch.bat" in text
+    assert "COM3" in text
+    assert "COM4" in text
+
+
+def test_windows_installer_avoids_percent_errorlevel_inside_blocks():
+    text = (ROOT / "install.bat").read_text(encoding="utf-8").lower()
+    assert "%errorlevel%" not in text
+    assert "if errorlevel 1" in text

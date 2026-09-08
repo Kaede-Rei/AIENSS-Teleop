@@ -6,7 +6,7 @@
 Dynamixel XL330 Leader  →  Python standalone teleop  →  DaMiao DM Follower
 ```
 
-目标是把原 `Kaede-Rel/Dual-DM-Arm-LeRobot` 中已经验证过的单臂遥操作路径完整抽离出来，保留原有电机配置、关节映射、夹爪逻辑和限位行为，同时把部署压缩到一个普通 Python 环境中
+目标不是重新设计控制逻辑，而是把原 `Dual-DM-Arm-LeRobot` 中已经验证过的单臂遥操作路径完整抽离出来，保留原有电机配置、关节映射、夹爪逻辑和限位行为，同时把部署压缩到一个普通 Python 环境中
 
 ## 1. 硬件与平台
 
@@ -50,11 +50,11 @@ Follower 通过串口连接达妙 USB-CAN/串口控制器，当前代码固定�
 | 平台 | 状态 | 说明 |
 |---|---|---|
 | **Linux / Ubuntu** | **推荐、正式支持** | 当前默认 `/dev/...` 设备路径、`install.sh`、`launch.sh` 和本仓库现有实机使用方式均按 Linux 设计 |
-| **Windows Native** | 可运行基础具备，但**未做本仓库实机验收** | ROBOTIS DYNAMIXEL SDK 官方支持 Windows；本项目 DM 侧使用 `pyserial`，理论上可改为 `COMx`；需要正确安装两套 USB 串口/转换器驱动，并手动执行 Python 命令 |
+| **Windows Native** | **提供一键安装/启动，尚未完成本仓库实机验收** | 提供 `install.bat` / `launch.bat`；Leader 使用官方 DYNAMIXEL SDK，Follower 使用 `pyserial`，串口配置改为 `COMx` |
 | WSL | 不推荐用于当前实机遥操作 | USB/串口透传、权限和设备重连会额外增加排障成本 |
 | macOS | 底层 SDK 支持，但本仓库未验收 | 不作为当前部署目标 |
 
-ROBOTIS 官方 DYNAMIXEL SDK 本身支持 Windows、Linux 和 macOS，因此 Python Leader 代码不是 Linux 专属；**真正让当前仓库偏向 Linux 的，是设备路径、USB 设备管理和这两个 Bash 启动脚本**
+ROBOTIS 官方 DYNAMIXEL SDK 本身支持 Windows、Linux 和 macOS，因此 Python Leader 代码不是 Linux 专属；仓库现在同时提供 Linux Bash 和 Windows Batch 入口；平台差异主要集中在串口设备名、USB 驱动和虚拟环境路径
 
 官方参考：[ROBOTIS DYNAMIXEL SDK Overview](https://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_sdk/overview/)
 
@@ -82,9 +82,9 @@ ROBOTIS 官方 DYNAMIXEL SDK 本身支持 Windows、Linux 和 macOS，因此 Pyt
 
 ## 2. Quick Start
 
-以下流程面向 **Linux**
+### 2.1 Linux
 
-### 2.1 安装
+#### 安装
 
 在仓库根目录：
 
@@ -112,7 +112,7 @@ chmod +x install.sh launch.sh
 PYTHON_BIN=python3.11 ./install.sh
 ```
 
-### 2.2 配置串口
+#### 配置串口
 
 安装完成后先修改：
 
@@ -138,9 +138,9 @@ teleop:
 /dev/ttyACM0
 ```
 
-请以实际设备为准，可用 `dmesg | grep tty` 或 `ls /dev/tty*` 查看
+请以实际设备为准
 
-### 2.3 首次建议：先做只读检查
+#### 首次建议：先做只读检查
 
 Leader：
 
@@ -156,7 +156,7 @@ Follower：
 
 两者都正常后再开始遥操作
 
-### 2.4 启动遥操作
+#### 启动遥操作
 
 ```bash
 ./launch.sh
@@ -169,6 +169,62 @@ Ctrl-C
 ```
 
 `launch.sh` 会固定使用仓库自己的 `.venv`，因此不需要手动执行 `source .venv/bin/activate`
+
+
+### 2.2 Windows Native
+
+在仓库根目录双击，或在 CMD / PowerShell 中运行：
+
+```bat
+install.bat
+```
+
+脚本会自动：
+
+1. 优先使用 Windows Python Launcher `py -3`，否则尝试 `python`
+2. 检查 Python `>= 3.10`
+3. 创建 `.venv`
+4. 更新 `pip / setuptools / wheel`
+5. 执行 `pip install -e .`
+
+然后修改 `config/arm.yaml` 中的两个串口，例如：
+
+```yaml
+robot:
+  port: COM3
+
+teleop:
+  port: COM4
+```
+
+建议首次先做只读检查：
+
+```bat
+.venv\Scripts\python.exe scripts\leader_test.py
+.venv\Scripts\python.exe scripts\follower_test.py
+```
+
+确认两侧硬件读取正常后启动遥操作：
+
+```bat
+launch.bat
+```
+
+Windows 启动脚本同样会把额外参数全部透传给 `scripts\teleop.py`，例如：
+
+```bat
+launch.bat --freq 100 --joint_velocity_scaling 0.3
+```
+
+或者临时覆盖端口：
+
+```bat
+launch.bat --leader_port COM4 --follower_port COM3
+```
+
+停止使用 `Ctrl-C`
+
+> Windows 仍需要先安装 Leader USB 转接器和 Follower DM USB-CAN/串口设备对应的 Windows 驱动；本仓库已提供 Windows 软件入口，但真实机械臂 Windows 端仍建议先只读测试、再低速遥操作
 
 ---
 
@@ -669,51 +725,28 @@ Leader → standalone Python → DM
 
 ---
 
-## 10. Windows Native 手动启动参考
+## 10. Windows Native 补充说明
 
-当前不提供 `.bat` / PowerShell 一键脚本，但核心 Python 路径可以按以下方式尝试
+Windows 已提供：
 
-创建环境：
-
-```powershell
-py -3 -m venv .venv
-.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
-.venv\Scripts\python -m pip install -e .
+```text
+install.bat
+launch.bat
 ```
 
-修改 `config/arm.yaml`：
+常规使用直接参考前面的 **2.2 Windows Native**；如果需要绕过批处理脚本，也可以直接使用：
 
-```yaml
-robot:
-  port: COM3
-
-teleop:
-  port: COM4
-```
-
-只读测试：
-
-```powershell
-.venv\Scripts\python scripts\leader_test.py
-.venv\Scripts\python scripts\follower_test.py
-```
-
-启动：
-
-```powershell
-.venv\Scripts\python scripts\teleop.py
+```bat
+.venv\Scripts\python.exe scripts\teleop.py
 ```
 
 需要额外确认：
 
 - Leader USB 转接器的 Windows 驱动
 - Follower DM USB-CAN/串口设备的 Windows 驱动
-- COM 号是否稳定
-- 200 Hz 遥操作循环在目标机器上的实际表现
+- `COM3` / `COM4` 等端口是否与实际设备对应
+- 目标 Windows 机器上 200 Hz 遥操作循环的实际稳定性
 
-在这些项目完成实机验证前，Windows 仍视为“可移植路径”，不是当前推荐部署平台
-
----
 
 ## 11. 来源与许可证
 
