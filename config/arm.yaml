@@ -1,6 +1,6 @@
 # 机器人配置（从臂/大臂）
 robot:
-  port: COM22
+  port: /dev/com-1.3-tty
   disable_torque_on_disconnect: false
   joint_velocity_scaling: 1.0
   max_gripper_torque: 1.0
@@ -22,7 +22,7 @@ robot:
 
 # 遥操作配置（主臂/小臂）
 teleop:
-  port: COM24
+  port: /dev/com-1.4-tty
   gripper_open_pos: 2280
   gripper_closed_pos: 1670
   direction: [1, 1, 1, 1, 1, 1]
