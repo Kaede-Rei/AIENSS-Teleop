@@ -14,42 +14,6 @@ from dm_arm_teleop.follower import DMFollower
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "arm.yaml"
 JOINT_KEYS = tuple(f"joint_{i}.pos" for i in range(1, 7))
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Safely move DM follower J1..J6 to zero")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
-    parser.add_argument("--follower_port", default=None)
-    parser.add_argument("--joint_velocity_scaling", type=float, default=0.2)
-    parser.add_argument("--control_freq", type=float, default=200.0)
-    parser.add_argument("--smooth_time", type=float, default=2.0)
-    parser.add_argument("--max_step", type=float, default=0.05)
-    parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--tolerance", type=float, default=0.02)
-    return parser.parse_args()
-
-
-def compute_reset_action(
-    start_positions: dict[str, float],
-    current_positions: dict[str, float],
-    *,
-    alpha: float,
-    max_step: float,
-) -> dict[str, float]:
-    alpha = min(max(float(alpha), 0.0), 1.0)
-    action: dict[str, float] = {}
-    for key in JOINT_KEYS:
-        q_start = float(start_positions[key])
-        q_now = float(current_positions[key])
-        q_ref = (1.0 - alpha) * q_start
-        delta = q_ref - q_now
-        if abs(delta) > max_step:
-            q_cmd = q_now + math.copysign(max_step, delta)
-        else:
-            q_cmd = q_ref
-        action[key] = q_cmd
-    return action
-
-
 def smooth_reset(
     follower: DMFollower,
     *,
